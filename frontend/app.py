@@ -1,8 +1,3 @@
-import requests
-import streamlit as st
-
-JAVA_API_URL = "http://10.79.49.90:8080/api/personnel/analyze"
-
 import streamlit as st
 import pandas as pd
 import time
@@ -359,6 +354,37 @@ def display_metric_card(title, value, description, card_class):
     )
 
 
+def display_officer_records_table(records, empty_message="No records logged yet."):
+    """Shared renderer for supervisor views: summary table + expandable full Q&A per record."""
+    if not records:
+        st.info(empty_message)
+        return
+
+    summary_rows = [
+        {
+            "Date": r.get("Date", "N/A"),
+            "Officer": r.get("Officer", "Unknown"),
+            "Stress_Level": r.get("Stress_Level", "N/A"),
+        }
+        for r in records
+    ]
+    st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
+
+    st.markdown("### 🔍 Detailed Responses")
+    for r in reversed(records):
+        header = f"{r.get('Date', 'N/A')}  •  {r.get('Officer', 'Unknown')}  •  {r.get('Stress_Level', 'N/A')} Stress"
+        with st.expander(header):
+            st.markdown(f"**Officer:** {r.get('Officer', 'Unknown')}")
+            st.markdown(f"**Date:** {r.get('Date', 'N/A')}")
+            st.markdown(f"**Stress Result:** {r.get('Stress_Level', 'N/A')}")
+            answers = r.get("Answers", {})
+            if answers:
+                st.markdown("---")
+                st.markdown("**Full Assessment Q&A**")
+                for question, answer in answers.items():
+                    st.write(f"- **{question}:** {answer}")
+
+
 # =========================================================
 # LOGIN PAGE
 # =========================================================
@@ -557,7 +583,36 @@ def stress_assessment():
                 "Consecutive_Duty_Days": consecutive_duty, "Workload_Trend": workload_trend
             }
             stress_level = calculate_demo_stress(data)
-            record = {"Date": datetime.now().strftime("%Y-%m-%d %H:%M"), "Stress_Level": stress_level}
+
+            # Full Q&A captured so supervisors can review exactly what was submitted
+            full_answers = {
+                "Age": age,
+                "Service Experience (Years)": experience,
+                "Working Hours per Week": working_hours,
+                "Sleep Hours per Day": sleep_hours,
+                "Physical Activity (Hours/Week)": physical_activity,
+                "Rest/Recovery Days (Past Month)": recovery_days,
+                "Perceived Duty Pressure": work_pressure,
+                "Work-Life Balance Rating": work_life_balance,
+                "Role Satisfaction": job_satisfaction,
+                "Family Support System": family_support,
+                "Skill/Training Programs Attended": training_opportunities,
+                "Annual Leaves Utilized": annual_leaves,
+                "Field Deployment Days (Past Year)": deployment_days,
+                "Night Shifts (Past Month)": night_shifts,
+                "Consecutive Duty Days": consecutive_duty,
+                "Days Since Last Sanctioned Leave": days_since_leave,
+                "Transfers in Last 3 Years": transfer_count,
+                "Recent Workload Trend": workload_trend,
+                "Average Shift Length (Hours/Day)": duty_hours_avg,
+            }
+
+            record = {
+                "Date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "Officer": st.session_state.username,
+                "Stress_Level": stress_level,
+                "Answers": full_answers,
+            }
             st.session_state.officer_records.append(record)
 
             st.success("Assessment logged successfully.")
@@ -613,35 +668,41 @@ def stress_relief_centre():
 
     with tab1:
         st.markdown("<div class='section-box'><h3>5-4-3-2-1 Grounding Exercise</h3><p>Focus your mind on immediate surroundings during overwhelming moments.</p></div>", unsafe_allow_html=True)
-        
-        c1, c2 = st.columns(2, gap="large")
-        
-        with c1:
-            st.markdown("### 👀 5 Things You See")
-            st.text_input("See 1", placeholder="Visible object 1...")
-            st.text_input("See 2", placeholder="Visible object 2...")
-            st.text_input("See 3", placeholder="Visible object 3...")
-            st.text_input("See 4", placeholder="Visible object 4...")
-            st.text_input("See 5", placeholder="Visible object 5...")
 
-            st.markdown("### 👂 3 Things You Hear")
-            st.text_input("Sound 1", placeholder="Fan hum, traffic...")
-            st.text_input("Sound 2", placeholder="Footsteps, wind...")
-            st.text_input("Sound 3", placeholder="Voices, distant clock...")
+        with st.form("grounding_form"):
+            c1, c2 = st.columns(2, gap="large")
 
-            st.markdown("### 👅 1 Thing You Taste")
-            st.text_input("Taste 1", placeholder="Water, mint, coffee...")
+            with c1:
+                st.markdown("### 👀 5 Things You See")
+                see1 = st.text_input("See 1", placeholder="Visible object 1...")
+                see2 = st.text_input("See 2", placeholder="Visible object 2...")
+                see3 = st.text_input("See 3", placeholder="Visible object 3...")
+                see4 = st.text_input("See 4", placeholder="Visible object 4...")
+                see5 = st.text_input("See 5", placeholder="Visible object 5...")
 
-        with c2:
-            st.markdown("### ✋ 4 Things You Feel")
-            st.text_input("Sensation 1", placeholder="Ground under feet...")
-            st.text_input("Sensation 2", placeholder="Fabric on arms...")
-            st.text_input("Sensation 3", placeholder="Desk temperature...")
-            st.text_input("Sensation 4", placeholder="Airflow on skin...")
+                st.markdown("### 👂 3 Things You Hear")
+                hear1 = st.text_input("Sound 1", placeholder="Fan hum, traffic...")
+                hear2 = st.text_input("Sound 2", placeholder="Footsteps, wind...")
+                hear3 = st.text_input("Sound 3", placeholder="Voices, distant clock...")
 
-            st.markdown("### 👃 2 Things You Smell")
-            st.text_input("Smell 1", placeholder="Fresh air, tea...")
-            st.text_input("Smell 2", placeholder="Paper, soap...")
+                st.markdown("### 👅 1 Thing You Taste")
+                taste1 = st.text_input("Taste 1", placeholder="Water, mint, coffee...")
+
+            with c2:
+                st.markdown("### ✋ 4 Things You Feel")
+                feel1 = st.text_input("Sensation 1", placeholder="Ground under feet...")
+                feel2 = st.text_input("Sensation 2", placeholder="Fabric on arms...")
+                feel3 = st.text_input("Sensation 3", placeholder="Desk temperature...")
+                feel4 = st.text_input("Sensation 4", placeholder="Airflow on skin...")
+
+                st.markdown("### 👃 2 Things You Smell")
+                smell1 = st.text_input("Smell 1", placeholder="Fresh air, tea...")
+                smell2 = st.text_input("Smell 2", placeholder="Paper, soap...")
+
+            grounding_submitted = st.form_submit_button("Submit Grounding Exercise")
+
+        if grounding_submitted:
+            st.success("✅ Grounding exercise completed. Well done — take a moment before returning to duty.")
 
     with tab2:
         st.markdown("<div class='section-box'><h3>Paced Respiration Protocol</h3><p><b>Routine:</b> Inhale 8s ➔ Hold 4s ➔ Release 8s. Repeat 3 times.</p></div>", unsafe_allow_html=True)
@@ -685,7 +746,7 @@ def emergency_support():
     st.error("If you or someone else is in immediate danger, contact emergency services immediately.")
 
     c1, c2, c3 = st.columns(3)
-    
+
     with c1:
         st.markdown("<div class='section-box'><h3>🚑 Emergency Response</h3><p>Immediate response for critical medical or safety situations.</p></div>", unsafe_allow_html=True)
         st.markdown("### Emergency Helpline: 112")
@@ -698,15 +759,15 @@ def emergency_support():
 
     with c3:
         st.markdown("<div class='section-box'><h3>👤 Personal Emergency Contact</h3><p>Quick access contact saved for high-stress situations.</p></div>", unsafe_allow_html=True)
-        
+
         name_input = st.text_input("Contact Name / Relation", value=st.session_state.emergency_contact_name, placeholder="e.g. Spouse, Brother, Unit Buddy")
         phone_input = st.text_input("Phone Number", value=st.session_state.emergency_contact_phone, placeholder="e.g. +91 9876543210")
-        
+
         if st.button("Save Personal Contact"):
             st.session_state.emergency_contact_name = name_input
             st.session_state.emergency_contact_phone = phone_input
             st.success("Personal emergency contact saved.")
-            
+
         if st.session_state.emergency_contact_phone:
             st.markdown(f"**Saved:** {st.session_state.emergency_contact_name}")
             st.link_button(f"Call {st.session_state.emergency_contact_name}", f"tel:{st.session_state.emergency_contact_phone}", use_container_width=True)
@@ -734,25 +795,29 @@ def supervisor_dashboard():
 
 def all_officer_records():
     st.markdown("<h1>📋 All Officer Records</h1>", unsafe_allow_html=True)
-    if st.session_state.officer_records:
-        st.dataframe(pd.DataFrame(st.session_state.officer_records), use_container_width=True, hide_index=True)
-    else:
-        st.info("No records logged yet.")
+    display_officer_records_table(st.session_state.officer_records, "No records logged yet.")
 
 
 def high_risk_officers():
     st.markdown("<h1>⚠️ High-Risk Personnel Flags</h1>", unsafe_allow_html=True)
     highs = [r for r in st.session_state.officer_records if r["Stress_Level"] == "High"]
-    if highs:
-        st.dataframe(pd.DataFrame(highs), use_container_width=True, hide_index=True)
-    else:
-        st.success("No high-stress assessments currently flagged.")
+    display_officer_records_table(highs, "No high-stress assessments currently flagged.")
 
 
 def officer_details():
-    st.markdown("<h1>👤 Officer Profile Details</h1>", unsafe_allow_html=True)
-    if st.session_state.officer_records:
-        st.dataframe(pd.DataFrame(st.session_state.officer_records), use_container_width=True, hide_index=True)
+    st.markdown("<h1>👤 Officer Profile Search</h1>", unsafe_allow_html=True)
+    records = st.session_state.officer_records
+
+    if not records:
+        st.info("No records logged yet.")
+        return
+
+    officer_names = sorted(set(r.get("Officer", "Unknown") for r in records))
+    selected_officer = st.selectbox("Select Officer", officer_names)
+
+    filtered = [r for r in records if r.get("Officer", "Unknown") == selected_officer]
+    st.markdown(f"### Records for **{selected_officer}**")
+    display_officer_records_table(filtered, f"No records found for {selected_officer}.")
 
 
 # =========================================================
