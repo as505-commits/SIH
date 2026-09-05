@@ -28,6 +28,7 @@ Test at:
 import logging
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 import joblib
@@ -52,6 +53,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("stress_api")
 
+BASE_DIR = Path(__file__).resolve().parent
+
 # ---------------------------------------------------------------------------
 # App setup
 # ---------------------------------------------------------------------------
@@ -72,23 +75,30 @@ app.add_middleware(
 # Model loading
 # ---------------------------------------------------------------------------
 try:
-    model = joblib.load("model.pkl")
+    model_bundle = joblib.load(BASE_DIR / "model.pkl")
+    model = model_bundle["model"]
+    encoders = model_bundle["encoders"]
     logger.info("Model loaded successfully")
-except FileNotFoundError:
+except (FileNotFoundError, KeyError, TypeError) as exc:
     model = None
-    logger.warning("model.pkl not found - run train_placeholder_model.py first")
+    encoders = {}
+    logger.warning("Could not load the expected model bundle: %s", exc)
 
 FEATURE_COLUMNS = [
-    "duty_days_streak", "leave_days_taken", "transfer_frequency",
-    "training_hours", "workload_score", "deployment_hardship", "self_report_score",
+    "Age", "Experience_Years", "Working_Hours_per_Week", "Sleep_Hours",
+    "Physical_Activity_Hours_per_Week", "Work_Pressure_Level",
+    "Annual_Leaves_Taken", "Work_Life_Balance", "Family_Support_Level",
+    "Job_Satisfaction", "Training_Opportunities", "Deployment_Days",
+    "Night_Shifts", "Consecutive_Duty_Days", "Days_Since_Last_Leave",
+    "Transfer_Count", "Recovery_Days", "Duty_Hours_Avg", "Workload_Trend",
 ]
 
 # ---------------------------------------------------------------------------
 # Storage - plain CSV files acting as a lightweight database for the hackathon.
 # Swap for a real database later without changing the endpoint logic much.
 # ---------------------------------------------------------------------------
-SELF_REPORTS_FILE = "self_reports.csv"
-PREDICTIONS_LOG_FILE = "predictions_log.csv"
+SELF_REPORTS_FILE = str(BASE_DIR / "self_reports.csv")
+PREDICTIONS_LOG_FILE = str(BASE_DIR / "predictions_log.csv")
 
 
 def _ensure_csv(path: str, columns: list[str]) -> None:
@@ -128,19 +138,31 @@ def get_caller(
 # ---------------------------------------------------------------------------
 class PersonnelRecord(BaseModel):
     personnel_id: str = Field(..., description="Anonymized/pseudonymous ID, not a real name")
-    duty_days_streak: int = Field(..., ge=0, le=90)
-    leave_days_taken: int = Field(..., ge=0, le=90)
-    transfer_frequency: int = Field(..., ge=0, le=10)
-    training_hours: int = Field(..., ge=0, le=200)
-    workload_score: int = Field(..., ge=0, le=10)
-    deployment_hardship: int = Field(..., ge=0, le=1)
-    self_report_score: int = Field(..., ge=0, le=27)
+    Age: int = Field(..., ge=18, le=100)
+    Experience_Years: int = Field(..., ge=0, le=80)
+    Working_Hours_per_Week: float = Field(..., ge=0, le=168)
+    Sleep_Hours: float = Field(..., ge=0, le=24)
+    Physical_Activity_Hours_per_Week: float = Field(..., ge=0, le=168)
+    Work_Pressure_Level: str
+    Annual_Leaves_Taken: int = Field(..., ge=0, le=365)
+    Work_Life_Balance: str
+    Family_Support_Level: str
+    Job_Satisfaction: str
+    Training_Opportunities: str
+    Deployment_Days: int = Field(..., ge=0, le=3650)
+    Night_Shifts: int = Field(..., ge=0, le=365)
+    Consecutive_Duty_Days: int = Field(..., ge=0, le=365)
+    Days_Since_Last_Leave: int = Field(..., ge=0, le=3650)
+    Transfer_Count: int = Field(..., ge=0, le=100)
+    Recovery_Days: int = Field(..., ge=0, le=365)
+    Duty_Hours_Avg: float = Field(..., ge=0, le=24)
+    Workload_Trend: float # maybe change
 
 
 class PredictionResponse(BaseModel):
     personnel_id: str
     risk: str
-    confidence: float
+    confidence: float # maybe change to percentage
 
 
 class SelfReportSubmission(BaseModel):
@@ -201,23 +223,35 @@ def health_check():
 @app.post("/predict", response_model=PredictionResponse)
 def predict_risk(record: PersonnelRecord) -> PredictionResponse:
     if model is None:
-        raise HTTPException(status_code=503, detail="Model not loaded. Contact ML teammate.")
+        raise HTTPException(status_code=503, detail="Model bundle is not loaded.")
 
-    input_data = pd.DataFrame([{col: getattr(record, col) for col in FEATURE_COLUMNS}])
+    input_data = pd.DataFrame([{
+        col: getattr(record, col) for col in FEATURE_COLUMNS
+    }])
+    for column, encoder in encoders.items():
+        try:
+            input_data[column] = encoder.transform(input_data[column])
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid value for {column}. Allowed values: {list(encoder.classes_)}",
+            ) from exc
+
     prediction = model.predict(input_data)[0]
     probabilities = model.predict_proba(input_data)[0]
     confidence = round(float(max(probabilities)), 2)
+    risk = str(prediction).lower()
 
     _append_row(PREDICTIONS_LOG_FILE, {
         "personnel_id": record.personnel_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "risk": prediction,
+        "risk": risk,
         "confidence": confidence,
         "requested_by_role": "system",
     })
-    logger.info(f"Prediction for {record.personnel_id}: {prediction} ({confidence})")
+    logger.info(f"Prediction for {record.personnel_id}: {risk} ({confidence})")
 
-    return PredictionResponse(personnel_id=record.personnel_id, risk=prediction, confidence=confidence)
+    return PredictionResponse(personnel_id=record.personnel_id, risk=risk, confidence=confidence)
 
 
 @app.post("/self-report", response_model=SelfReportResponse)
@@ -269,4 +303,3 @@ def dashboard_summary(caller: dict = Depends(get_caller)):
         risk_breakdown=breakdown,
         generated_at=datetime.now(timezone.utc).isoformat(),
     )
-
