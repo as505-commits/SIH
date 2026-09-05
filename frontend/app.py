@@ -1,7 +1,13 @@
+
 import streamlit as st
 import pandas as pd
 import time
 from datetime import datetime
+
+import requests
+import streamlit as st
+
+JAVA_API_URL = "http://10.79.49.90:8080/api/personnel/analyze"
 
 
 # =========================================================
