@@ -2,13 +2,17 @@ package com.sih.backend.service;
 
 import com.sih.backend.model.PredictionRequest;
 import org.springframework.stereotype.Service;
+
 import java.util.ArrayList;
 import java.util.List;
 
 @Service
 public class RiskFactorService {
+
     public List<String> getRiskFactors(PredictionRequest request) {
+
         List<String> riskFactors = new ArrayList<>();
+
         if (request.getSleepHours() < 6) {
             riskFactors.add("Low sleep hours");
         }
