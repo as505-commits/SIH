@@ -1,11 +1,8 @@
-
 import streamlit as st
 import pandas as pd
 import time
 from datetime import datetime
-
 import requests
-import streamlit as st
 
 JAVA_API_URL = "http://10.79.49.90:8080/api/personnel/analyze"
 
@@ -549,7 +546,7 @@ def stress_assessment():
 
         c1, c2 = st.columns(2)
         with c1: family_support = st.selectbox("Family Support System", ["Low", "Medium", "High"])
-        with c2: training_opportunities = st.number_input("Skill/Training Programs Attended", min_value=0, max_value=50, value=2)
+        with c2:training_opportunities = st.selectbox("Training Opportunities",["Yes", "No"])
 
         st.markdown("## 🚨 Operational & Deployment Load")
         c1, c2, c3 = st.columns(3)
@@ -580,50 +577,116 @@ def stress_assessment():
             duty_hours_avg = st.number_input("Average Shift Length (Hours/Day)", min_value=0.0, max_value=24.0, value=8.0, step=0.5)
 
         submitted = st.form_submit_button("Submit & Calculate Stress Level")
-
         if submitted:
-            data = {
-                "Work_Pressure_Level": work_pressure, "Work_Life_Balance": work_life_balance,
-                "Family_Support_Level": family_support, "Job_Satisfaction": job_satisfaction,
-                "Working_Hours_per_Week": working_hours, "Sleep_Hours": sleep_hours,
-                "Consecutive_Duty_Days": consecutive_duty, "Workload_Trend": workload_trend
-            }
-            stress_level = calculate_demo_stress(data)
-
-            # Full Q&A captured so supervisors can review exactly what was submitted
-            full_answers = {
+            personnel_data = {
+                "personnel_id": st.session_state.username or "P001",
                 "Age": age,
-                "Service Experience (Years)": experience,
-                "Working Hours per Week": working_hours,
-                "Sleep Hours per Day": sleep_hours,
-                "Physical Activity (Hours/Week)": physical_activity,
-                "Rest/Recovery Days (Past Month)": recovery_days,
-                "Perceived Duty Pressure": work_pressure,
-                "Work-Life Balance Rating": work_life_balance,
-                "Role Satisfaction": job_satisfaction,
-                "Family Support System": family_support,
-                "Skill/Training Programs Attended": training_opportunities,
-                "Annual Leaves Utilized": annual_leaves,
-                "Field Deployment Days (Past Year)": deployment_days,
-                "Night Shifts (Past Month)": night_shifts,
-                "Consecutive Duty Days": consecutive_duty,
-                "Days Since Last Sanctioned Leave": days_since_leave,
-                "Transfers in Last 3 Years": transfer_count,
-                "Recent Workload Trend": workload_trend,
-                "Average Shift Length (Hours/Day)": duty_hours_avg,
+                "Experience_Years": experience,
+                "Working_Hours_per_Week": working_hours,
+                "Sleep_Hours": sleep_hours,
+                "Physical_Activity_Hours_per_Week": physical_activity,
+                "Work_Pressure_Level": work_pressure,
+                "Annual_Leaves_Taken": annual_leaves,
+                "Work_Life_Balance": work_life_balance,
+                "Family_Support_Level": family_support,
+                "Job_Satisfaction": job_satisfaction,
+                "Training_Opportunities": training_opportunities,
+                "Deployment_Days": deployment_days,
+                "Night_Shifts": night_shifts,
+                "Consecutive_Duty_Days": consecutive_duty,
+                "Days_Since_Last_Leave": days_since_leave,
+                "Transfer_Count": transfer_count,
+                "Recovery_Days": recovery_days,
+                "Duty_Hours_Avg": duty_hours_avg,
+                "Workload_Trend": workload_trend,
             }
 
-            record = {
-                "Date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "Officer": st.session_state.username,
-                "Stress_Level": stress_level,
-                "Answers": full_answers,
-            }
-            st.session_state.officer_records.append(record)
+            try:
+                response = requests.post(
+                    JAVA_API_URL,
+                    json=personnel_data,
+                    timeout=15,
+                )
 
-            st.success("Assessment logged successfully.")
-            st.markdown("### Estimated Stress Risk")
-            display_stress_badge(stress_level)
+                if response.ok:
+                    result = response.json()
+
+                    stress_level = str(
+                        result.get("stressLevel", "Pending")
+                    ).capitalize()
+
+                    full_answers = {
+                        "Age": age,
+                        "Service Experience (Years)": experience,
+                        "Working Hours per Week": working_hours,
+                        "Sleep Hours per Day": sleep_hours,
+                        "Physical Activity (Hours/Week)": physical_activity,
+                        "Rest/Recovery Days (Past Month)": recovery_days,
+                        "Perceived Duty Pressure": work_pressure,
+                        "Work-Life Balance Rating": work_life_balance,
+                        "Role Satisfaction": job_satisfaction,
+                        "Family Support System": family_support,
+                        "Training Opportunities": training_opportunities,
+                        "Annual Leaves Utilized": annual_leaves,
+                        "Field Deployment Days (Past Year)": deployment_days,
+                        "Night Shifts (Past Month)": night_shifts,
+                        "Consecutive Duty Days": consecutive_duty,
+                        "Days Since Last Sanctioned Leave": days_since_leave,
+                        "Transfers in Last 3 Years": transfer_count,
+                        "Recent Workload Trend": workload_trend,
+                        "Average Shift Length (Hours/Day)": duty_hours_avg,
+                    }
+
+                    record = {
+                        "Date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "Officer": st.session_state.username,
+                        "Stress_Level": stress_level,
+                        "Answers": full_answers,
+                        "Recommendation": result.get("recommendation", ""),
+                        "Alert": result.get("alert", ""),
+                        "Risk_Factors": result.get("riskFactors", []),
+                    }
+
+                    st.session_state.officer_records.append(record)
+
+                    st.success("Assessment processed successfully.")
+                    st.markdown("### Predicted Stress Risk")
+                    display_stress_badge(stress_level)
+
+                    recommendation = result.get("recommendation", "")
+                    if recommendation:
+                        st.info(f"Recommendation: {recommendation}")
+
+                    alert = result.get("alert", "")
+                    if alert:
+                        st.warning(f"Alert: {alert}")
+
+                    risk_factors = result.get("riskFactors", [])
+                    if risk_factors:
+                        st.markdown("### Identified Risk Factors")
+                        for factor in risk_factors:
+                            st.write(f"- {factor}")
+
+                else:
+                    st.error(
+                        f"Java backend returned HTTP "
+                        f"{response.status_code}: {response.text}"
+                    )
+
+            except requests.exceptions.Timeout:
+                st.error(
+                    "The request timed out. Check that the Java backend "
+                    "is running and reachable."
+                )
+
+            except requests.exceptions.ConnectionError:
+                st.error(
+                    "Could not connect to the Java backend. Check the IP "
+                    "address, Wi-Fi connection, and Windows Firewall."
+                )
+
+            except requests.exceptions.RequestException as error:
+                st.error(f"Backend request failed: {error}")
 
 
 # =========================================================
