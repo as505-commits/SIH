@@ -6,22 +6,12 @@ import requests
 
 JAVA_API_URL = "http://10.79.49.90:8080/api/personnel/analyze"
 
-
-# =========================================================
-# PAGE CONFIGURATION
-# =========================================================
-
 st.set_page_config(
     page_title="Personnel Welfare Monitoring System",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-
-# =========================================================
-# SESSION STATE INITIALIZATION
-# =========================================================
 
 if "theme_mode" not in st.session_state:
     st.session_state.theme_mode = "Dark Mode"  # DEFAULT SET TO DARK MODE
@@ -46,11 +36,6 @@ if "emergency_contact_name" not in st.session_state:
 
 if "emergency_contact_phone" not in st.session_state:
     st.session_state.emergency_contact_phone = ""
-
-
-# =========================================================
-# CLINICAL BIOME PALETTE & UPGRADED STYLING ENGINE
-# =========================================================
 
 is_dark = st.session_state.theme_mode == "Dark Mode"
 
@@ -387,11 +372,6 @@ def display_officer_records_table(records, empty_message="No records logged yet.
                 for question, answer in answers.items():
                     st.write(f"- **{question}:** {answer}")
 
-
-# =========================================================
-# LOGIN PAGE
-# =========================================================
-
 def login_page():
     st.markdown("""
     <div class="welcome-banner">
@@ -442,11 +422,6 @@ def login_page():
 
             st.caption("Demo accounts: Officer01 / officer123 or Anya / anya123")
 
-
-# =========================================================
-# SIDEBAR NAVIGATION
-# =========================================================
-
 def sidebar_navigation():
     with st.sidebar:
         st.markdown("### 🛡️ Welfare Portal")
@@ -478,11 +453,6 @@ def sidebar_navigation():
 
     return page
 
-
-# =========================================================
-# OFFICER DASHBOARD
-# =========================================================
-
 def officer_dashboard():
     records = st.session_state.officer_records
     latest_stress = records[-1]["Stress_Level"] if records else "N/A"
@@ -511,11 +481,6 @@ def officer_dashboard():
         st.markdown("<div class='section-box'><h3>📝 Daily Journal</h3><p>Reflect on your mood, log notes confidentially, and track thoughts affecting your wellbeing.</p></div>", unsafe_allow_html=True)
     with t3:
         st.markdown("<div class='section-box'><h3>🌿 Stress Relief Centre</h3><p>Try breathing exercises, grounding activities, and simple relaxation techniques.</p></div>", unsafe_allow_html=True)
-
-
-# =========================================================
-# STRESS ASSESSMENT FORM
-# =========================================================
 
 def stress_assessment():
     st.markdown("""
@@ -688,11 +653,6 @@ def stress_assessment():
             except requests.exceptions.RequestException as error:
                 st.error(f"Backend request failed: {error}")
 
-
-# =========================================================
-# DAILY JOURNAL
-# =========================================================
-
 def daily_journal():
     st.markdown("""
     <div class="welcome-banner">
@@ -719,11 +679,6 @@ def daily_journal():
         for entry in reversed(st.session_state.journal_entries):
             with st.expander(f"{entry['Date']}  •  {entry['Mood']} ({entry['Rating']}/10)"):
                 st.write(entry["Text"])
-
-
-# =========================================================
-# STRESS RELIEF CENTRE
-# =========================================================
 
 def stress_relief_centre():
     st.markdown("""
@@ -799,11 +754,6 @@ def stress_relief_centre():
         st.markdown("- 🧘 **Shoulder Stretch:** Roll shoulders backward and release jaw tension.")
         st.markdown("- 🤝 **Peer Support:** Talk openly to a trusted peer officer.")
 
-
-# =========================================================
-# EMERGENCY SUPPORT
-# =========================================================
-
 def emergency_support():
     st.markdown("""
     <div class="welcome-banner">
@@ -840,11 +790,6 @@ def emergency_support():
         if st.session_state.emergency_contact_phone:
             st.markdown(f"**Saved:** {st.session_state.emergency_contact_name}")
             st.link_button(f"Call {st.session_state.emergency_contact_name}", f"tel:{st.session_state.emergency_contact_phone}", use_container_width=True)
-
-
-# =========================================================
-# SUPERVISOR VIEWS
-# =========================================================
 
 def supervisor_dashboard():
     records = st.session_state.officer_records
@@ -887,11 +832,6 @@ def officer_details():
     filtered = [r for r in records if r.get("Officer", "Unknown") == selected_officer]
     st.markdown(f"### Records for **{selected_officer}**")
     display_officer_records_table(filtered, f"No records found for {selected_officer}.")
-
-
-# =========================================================
-# MAIN ROUTER
-# =========================================================
 
 if not st.session_state.logged_in:
     login_page()
