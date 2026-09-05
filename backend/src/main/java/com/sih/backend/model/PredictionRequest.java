@@ -5,6 +5,9 @@ import jakarta.validation.constraints.PositiveOrZero;
 
 public class PredictionRequest {
 
+    @JsonProperty("personnel_id")
+    private String personnelId;
+
     @JsonProperty("Age")
     @PositiveOrZero
     private int age;
@@ -36,12 +39,10 @@ public class PredictionRequest {
     private String workLifeBalance;
 
     @JsonProperty("Family_Support_Level")
-    @PositiveOrZero
-    private int familySupportLevel;
+    private String familySupportLevel;
 
     @JsonProperty("Job_Satisfaction")
-    @PositiveOrZero
-    private int jobSatisfaction;
+    private String jobSatisfaction;
 
     @JsonProperty("Training_Opportunities")
     private String trainingOpportunities;
@@ -75,12 +76,18 @@ public class PredictionRequest {
     private double dutyHoursAvg;
 
     @JsonProperty("Workload_Trend")
-    private int workloadTrend;
-
+    private double workloadTrend;
 
     public PredictionRequest() {
     }
 
+    public String getPersonnelId() {
+        return personnelId;
+    }
+
+    public void setPersonnelId(String personnelId) {
+        this.personnelId = personnelId;
+    }
 
     public int getAge() {
         return age;
@@ -90,7 +97,6 @@ public class PredictionRequest {
         this.age = age;
     }
 
-
     public int getExperienceYears() {
         return experienceYears;
     }
@@ -98,7 +104,6 @@ public class PredictionRequest {
     public void setExperienceYears(int experienceYears) {
         this.experienceYears = experienceYears;
     }
-
 
     public double getWorkingHoursPerWeek() {
         return workingHoursPerWeek;
@@ -108,7 +113,6 @@ public class PredictionRequest {
         this.workingHoursPerWeek = workingHoursPerWeek;
     }
 
-
     public double getSleepHours() {
         return sleepHours;
     }
@@ -116,7 +120,6 @@ public class PredictionRequest {
     public void setSleepHours(double sleepHours) {
         this.sleepHours = sleepHours;
     }
-
 
     public double getPhysicalActivityHoursPerWeek() {
         return physicalActivityHoursPerWeek;
@@ -126,7 +129,6 @@ public class PredictionRequest {
         this.physicalActivityHoursPerWeek = physicalActivityHoursPerWeek;
     }
 
-
     public String getWorkPressureLevel() {
         return workPressureLevel;
     }
@@ -134,7 +136,6 @@ public class PredictionRequest {
     public void setWorkPressureLevel(String workPressureLevel) {
         this.workPressureLevel = workPressureLevel;
     }
-
 
     public int getAnnualLeavesTaken() {
         return annualLeavesTaken;
@@ -144,7 +145,6 @@ public class PredictionRequest {
         this.annualLeavesTaken = annualLeavesTaken;
     }
 
-
     public String getWorkLifeBalance() {
         return workLifeBalance;
     }
@@ -153,24 +153,21 @@ public class PredictionRequest {
         this.workLifeBalance = workLifeBalance;
     }
 
-
-    public int getFamilySupportLevel() {
+    public String getFamilySupportLevel() {
         return familySupportLevel;
     }
 
-    public void setFamilySupportLevel(int familySupportLevel) {
+    public void setFamilySupportLevel(String familySupportLevel) {
         this.familySupportLevel = familySupportLevel;
     }
 
-
-    public int getJobSatisfaction() {
+    public String getJobSatisfaction() {
         return jobSatisfaction;
     }
 
-    public void setJobSatisfaction(int jobSatisfaction) {
+    public void setJobSatisfaction(String jobSatisfaction) {
         this.jobSatisfaction = jobSatisfaction;
     }
-
 
     public String getTrainingOpportunities() {
         return trainingOpportunities;
@@ -180,7 +177,6 @@ public class PredictionRequest {
         this.trainingOpportunities = trainingOpportunities;
     }
 
-
     public int getDeploymentDays() {
         return deploymentDays;
     }
@@ -188,7 +184,6 @@ public class PredictionRequest {
     public void setDeploymentDays(int deploymentDays) {
         this.deploymentDays = deploymentDays;
     }
-
 
     public int getNightShifts() {
         return nightShifts;
@@ -198,7 +193,6 @@ public class PredictionRequest {
         this.nightShifts = nightShifts;
     }
 
-
     public int getConsecutiveDutyDays() {
         return consecutiveDutyDays;
     }
@@ -206,7 +200,6 @@ public class PredictionRequest {
     public void setConsecutiveDutyDays(int consecutiveDutyDays) {
         this.consecutiveDutyDays = consecutiveDutyDays;
     }
-
 
     public int getDaysSinceLastLeave() {
         return daysSinceLastLeave;
@@ -216,7 +209,6 @@ public class PredictionRequest {
         this.daysSinceLastLeave = daysSinceLastLeave;
     }
 
-
     public int getTransferCount() {
         return transferCount;
     }
@@ -224,7 +216,6 @@ public class PredictionRequest {
     public void setTransferCount(int transferCount) {
         this.transferCount = transferCount;
     }
-
 
     public int getRecoveryDays() {
         return recoveryDays;
@@ -234,7 +225,6 @@ public class PredictionRequest {
         this.recoveryDays = recoveryDays;
     }
 
-
     public double getDutyHoursAvg() {
         return dutyHoursAvg;
     }
@@ -243,12 +233,11 @@ public class PredictionRequest {
         this.dutyHoursAvg = dutyHoursAvg;
     }
 
-
-    public int getWorkloadTrend() {
+    public double getWorkloadTrend() {
         return workloadTrend;
     }
 
-    public void setWorkloadTrend(int workloadTrend) {
+    public void setWorkloadTrend(double workloadTrend) {
         this.workloadTrend = workloadTrend;
     }
 }
