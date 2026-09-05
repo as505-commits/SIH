@@ -25,8 +25,6 @@ public class PredictionService {
 
     public PredictionResponse analyze(PredictionRequest request) {
 
-        // Temporary stress level.
-        // Later this will come from the ML model.
 
         String stressLevel = "Pending";
 
