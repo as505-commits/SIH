@@ -1,0 +1,259 @@
+"""
+Run with:
+    uvicorn main:app --reload --host 0.0.0.0 --port 8000
+Test at:
+    http://localhost:8000/docs
+"""
+
+import logging
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+import joblib
+import pandas as pd
+from fastapi import Depends, FastAPI, HTTPException, Header, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, Field
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    handlers=[
+        logging.FileHandler("api.log"),
+        logging.StreamHandler(),
+    ],
+)
+logger = logging.getLogger("stress_api")
+
+BASE_DIR = Path(__file__).resolve().parent
+
+# App setup
+app = FastAPI(title="Personnel Stress Risk API", version="0.2.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Model loading
+try:
+    model_bundle = joblib.load(BASE_DIR / "model.pkl")
+    model = model_bundle["model"]
+    encoders = model_bundle["encoders"]
+    logger.info("Model loaded successfully")
+except (FileNotFoundError, KeyError, TypeError) as exc:
+    model = None
+    encoders = {}
+    logger.warning("Could not load the expected model bundle: %s", exc)
+
+FEATURE_COLUMNS = [
+    "Age", "Experience_Years", "Working_Hours_per_Week", "Sleep_Hours",
+    "Physical_Activity_Hours_per_Week", "Work_Pressure_Level",
+    "Annual_Leaves_Taken", "Work_Life_Balance", "Family_Support_Level",
+    "Job_Satisfaction", "Training_Opportunities", "Deployment_Days",
+    "Night_Shifts", "Consecutive_Duty_Days", "Days_Since_Last_Leave",
+    "Transfer_Count", "Recovery_Days", "Duty_Hours_Avg", "Workload_Trend",
+]
+
+# Database files
+SELF_REPORTS_FILE = str(BASE_DIR / "self_reports.csv")
+PREDICTIONS_LOG_FILE = str(BASE_DIR / "predictions_log.csv")
+
+
+def _ensure_csv(path: str, columns: list[str]) -> None:
+    if not os.path.exists(path):
+        pd.DataFrame(columns=columns).to_csv(path, index=False)
+
+
+_ensure_csv(SELF_REPORTS_FILE, ["personnel_id", "timestamp", "self_report_score", "notes"])
+_ensure_csv(PREDICTIONS_LOG_FILE, ["personnel_id", "timestamp", "risk", "confidence", "requested_by_role"])
+
+
+def _append_row(path: str, row: dict) -> None:
+    df = pd.DataFrame([row])
+    df.to_csv(path, mode="a", header=False, index=False)
+
+# Roles: "personnel", "welfare_officer", "commander"
+
+VALID_ROLES = {"personnel", "welfare_officer", "commander"}
+
+def get_caller(
+    x_role: str = Header(..., description="One of: personnel, welfare_officer, commander"),
+    x_user_id: Optional[str] = Header(None, description="Required when role is 'personnel'"),
+):
+    if x_role not in VALID_ROLES:
+        raise HTTPException(status_code=403, detail=f"Invalid role. Must be one of {sorted(VALID_ROLES)}")
+    if x_role == "personnel" and not x_user_id:
+        raise HTTPException(status_code=400, detail="X-User-Id header is required for role 'personnel'")
+    return {"role": x_role, "user_id": x_user_id}
+
+# Request/response schemas
+
+class PersonnelRecord(BaseModel):
+    personnel_id: str = Field(..., description="Anonymized/pseudonymous ID, not a real name")
+    Age: int = Field(..., ge=18, le=100)
+    Experience_Years: int = Field(..., ge=0, le=80)
+    Working_Hours_per_Week: float = Field(..., ge=0, le=168)
+    Sleep_Hours: float = Field(..., ge=0, le=24)
+    Physical_Activity_Hours_per_Week: float = Field(..., ge=0, le=168)
+    Work_Pressure_Level: str
+    Annual_Leaves_Taken: int = Field(..., ge=0, le=365)
+    Work_Life_Balance: str
+    Family_Support_Level: str
+    Job_Satisfaction: str
+    Training_Opportunities: str
+    Deployment_Days: int = Field(..., ge=0, le=3650)
+    Night_Shifts: int = Field(..., ge=0, le=365)
+    Consecutive_Duty_Days: int = Field(..., ge=0, le=365)
+    Days_Since_Last_Leave: int = Field(..., ge=0, le=3650)
+    Transfer_Count: int = Field(..., ge=0, le=100)
+    Recovery_Days: int = Field(..., ge=0, le=365)
+    Duty_Hours_Avg: float = Field(..., ge=0, le=24)
+    Workload_Trend: float
+
+class PredictionResponse(BaseModel):
+    personnel_id: str
+    risk: str
+    confidence: float 
+
+class SelfReportSubmission(BaseModel):
+    self_report_score: int = Field(..., ge=0, le=27)
+    notes: Optional[str] = Field(None, max_length=500)
+
+class SelfReportResponse(BaseModel):
+    status: str
+    personnel_id: str
+
+class DashboardSummary(BaseModel):
+    total_records: int
+    risk_breakdown: dict
+    generated_at: str
+
+
+# Error handlers - return clean JSON
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    logger.warning(f"Validation error on {request.url.path}: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={"error": "Invalid request data", "details": exc.errors()},
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_error_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled error on {request.url.path}: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Something went wrong. Check server logs."},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+@app.get("/")
+def root():
+    return {"status": "API is running", "model_loaded": model is not None}
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok" if model is not None else "model not loaded"}
+
+
+# NOTE: /predict is intentionally callable without a strict role check
+# (kept open for internal/system use and demo reliability) - but every call
+# is logged. The dashboard/history endpoints below DO enforce roles, since
+# those are what expose individual-level data to a human. Tighten this
+# before any real deployment by adding `caller: dict = Depends(get_caller)`.
+@app.post("/predict", response_model=PredictionResponse)
+def predict_risk(record: PersonnelRecord) -> PredictionResponse:
+    if model is None:
+        raise HTTPException(status_code=503, detail="Model bundle is not loaded.")
+
+    input_data = pd.DataFrame([{
+        col: getattr(record, col) for col in FEATURE_COLUMNS
+    }])
+    for column, encoder in encoders.items():
+        try:
+            input_data[column] = encoder.transform(input_data[column])
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid value for {column}. Allowed values: {list(encoder.classes_)}",
+            ) from exc
+
+    prediction = model.predict(input_data)[0]
+    probabilities = model.predict_proba(input_data)[0]
+    confidence = round(float(max(probabilities))*100, 2)
+    risk = str(prediction).lower()
+
+    _append_row(PREDICTIONS_LOG_FILE, {
+        "personnel_id": record.personnel_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "risk": risk,
+        "confidence": confidence,
+        "requested_by_role": "system",
+    })
+    logger.info(f"Prediction for {record.personnel_id}: {risk} ({confidence})")
+
+    return PredictionResponse(personnel_id=record.personnel_id, risk=risk, confidence=confidence)
+
+
+@app.post("/self-report", response_model=SelfReportResponse)
+def submit_self_report(report: SelfReportSubmission, caller: dict = Depends(get_caller)):
+    if caller["role"] != "personnel":
+        raise HTTPException(status_code=403, detail="Only role 'personnel' can submit a self-report")
+
+    _append_row(SELF_REPORTS_FILE, {
+        "personnel_id": caller["user_id"],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "self_report_score": report.self_report_score,
+        "notes": report.notes or "",
+    })
+    logger.info(f"Self-report received from {caller['user_id']}")
+
+    return SelfReportResponse(status="recorded", personnel_id=caller["user_id"])
+
+
+@app.get("/history/{personnel_id}")
+def get_history(personnel_id: str, caller: dict = Depends(get_caller)):
+    # Personnel can only see their own history. Welfare officers can see anyone's.
+    # Commanders are deliberately blocked from individual-level detail per the
+    # problem statement's privacy requirement - they only get /dashboard/summary.
+    if caller["role"] == "commander":
+        raise HTTPException(status_code=403, detail="Commanders can only view aggregated data via /dashboard/summary")
+    if caller["role"] == "personnel" and caller["user_id"] != personnel_id:
+        raise HTTPException(status_code=403, detail="Personnel can only view their own history")
+
+    reports = pd.read_csv(SELF_REPORTS_FILE)
+    predictions = pd.read_csv(PREDICTIONS_LOG_FILE)
+
+    return {
+        "personnel_id": personnel_id,
+        "self_reports": reports[reports["personnel_id"] == personnel_id].to_dict(orient="records"),
+        "predictions": predictions[predictions["personnel_id"] == personnel_id].to_dict(orient="records"),
+    }
+
+
+@app.get("/dashboard/summary", response_model=DashboardSummary)
+def dashboard_summary(caller: dict = Depends(get_caller)):
+    if caller["role"] not in ("commander", "welfare_officer"):
+        raise HTTPException(status_code=403, detail="Only commanders and welfare officers can view the dashboard")
+
+    predictions = pd.read_csv(PREDICTIONS_LOG_FILE)
+    breakdown = predictions["risk"].value_counts().to_dict() if not predictions.empty else {}
+
+    return DashboardSummary(
+        total_records=len(predictions),
+        risk_breakdown=breakdown,
+        generated_at=datetime.now(timezone.utc).isoformat(),
+    )
