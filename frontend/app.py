@@ -540,7 +540,7 @@ def stress_assessment():
 
         st.markdown("## 💼 Environment & Support Metrics")
         c1, c2, c3 = st.columns(3)
-        with c1: work_pressure = st.selectbox("Perceived Duty Pressure", ["Low", "Medium", "High"])
+        with c1: work_pressure = st.selectbox("Perceived Duty Pressure", ["Medium", "High"])
         with c2: work_life_balance = st.selectbox("Work-Life Balance Rating", ["Low", "Medium", "High"])
         with c3: job_satisfaction = st.selectbox("Role Satisfaction", ["Low", "Medium", "High"])
 
