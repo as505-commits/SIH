@@ -1,26 +1,6 @@
 """
-STRESS RISK PREDICTION API - Full version
-------------------------------------------
-Adds to the basic /predict endpoint:
-  - POST /self-report        personnel submit their own voluntary check-in
-  - GET  /history/{id}       past records (own records, or any if welfare officer)
-  - GET  /dashboard/summary  aggregated, anonymized stats (commander/welfare officer only)
-  - Role-based access control (simplified for a hackathon - see note below)
-  - CORS so a dashboard running on a different port/domain can call this
-  - Logging of every request
-  - Clean error responses instead of raw stack traces
-
-SECURITY NOTE FOR YOUR PPT / JUDGES:
-This uses simple header-based roles (X-Role, X-User-Id) to DEMONSTRATE the
-role-based access control the problem statement requires, without building
-a full login system in a hackathon. In a real deployment this would be
-replaced with proper authentication (JWT tokens issued after login, tied to
-a real user directory) - say this explicitly if asked, it shows you know
-the difference between a demo shortcut and production security.
-
 Run with:
     uvicorn main:app --reload --host 0.0.0.0 --port 8000
-
 Test at:
     http://localhost:8000/docs
 """
@@ -39,10 +19,6 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
 
-# ---------------------------------------------------------------------------
-# Logging setup - writes to both the console and a file, so you have a record
-# of every request during your demo (and can debug afterward).
-# ---------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s",
@@ -55,15 +31,9 @@ logger = logging.getLogger("stress_api")
 
 BASE_DIR = Path(__file__).resolve().parent
 
-# ---------------------------------------------------------------------------
 # App setup
-# ---------------------------------------------------------------------------
 app = FastAPI(title="Personnel Stress Risk API", version="0.2.0")
 
-# CORS: allows your dashboard (running on a different port, e.g. localhost:3000,
-# or a different domain once deployed) to call this API from the browser.
-# allow_origins=["*"] is fine for a hackathon demo - restrict this to your real
-# dashboard's domain before any real deployment.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -71,9 +41,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------------------------------------------------------------------
 # Model loading
-# ---------------------------------------------------------------------------
 try:
     model_bundle = joblib.load(BASE_DIR / "model.pkl")
     model = model_bundle["model"]
@@ -93,10 +61,7 @@ FEATURE_COLUMNS = [
     "Transfer_Count", "Recovery_Days", "Duty_Hours_Avg", "Workload_Trend",
 ]
 
-# ---------------------------------------------------------------------------
-# Storage - plain CSV files acting as a lightweight database for the hackathon.
-# Swap for a real database later without changing the endpoint logic much.
-# ---------------------------------------------------------------------------
+# Database files
 SELF_REPORTS_FILE = str(BASE_DIR / "self_reports.csv")
 PREDICTIONS_LOG_FILE = str(BASE_DIR / "predictions_log.csv")
 
@@ -114,13 +79,9 @@ def _append_row(path: str, row: dict) -> None:
     df = pd.DataFrame([row])
     df.to_csv(path, mode="a", header=False, index=False)
 
-
-# ---------------------------------------------------------------------------
-# Role-based access control (simplified - see security note above)
 # Roles: "personnel", "welfare_officer", "commander"
-# ---------------------------------------------------------------------------
-VALID_ROLES = {"personnel", "welfare_officer", "commander"}
 
+VALID_ROLES = {"personnel", "welfare_officer", "commander"}
 
 def get_caller(
     x_role: str = Header(..., description="One of: personnel, welfare_officer, commander"),
@@ -132,10 +93,8 @@ def get_caller(
         raise HTTPException(status_code=400, detail="X-User-Id header is required for role 'personnel'")
     return {"role": x_role, "user_id": x_user_id}
 
-
-# ---------------------------------------------------------------------------
 # Request/response schemas
-# ---------------------------------------------------------------------------
+
 class PersonnelRecord(BaseModel):
     personnel_id: str = Field(..., description="Anonymized/pseudonymous ID, not a real name")
     Age: int = Field(..., ge=18, le=100)
@@ -156,24 +115,20 @@ class PersonnelRecord(BaseModel):
     Transfer_Count: int = Field(..., ge=0, le=100)
     Recovery_Days: int = Field(..., ge=0, le=365)
     Duty_Hours_Avg: float = Field(..., ge=0, le=24)
-    Workload_Trend: float # maybe change
-
+    Workload_Trend: float
 
 class PredictionResponse(BaseModel):
     personnel_id: str
     risk: str
-    confidence: float # maybe change to percentage
-
+    confidence: float 
 
 class SelfReportSubmission(BaseModel):
     self_report_score: int = Field(..., ge=0, le=27)
     notes: Optional[str] = Field(None, max_length=500)
 
-
 class SelfReportResponse(BaseModel):
     status: str
     personnel_id: str
-
 
 class DashboardSummary(BaseModel):
     total_records: int
@@ -181,9 +136,8 @@ class DashboardSummary(BaseModel):
     generated_at: str
 
 
-# ---------------------------------------------------------------------------
-# Error handlers - return clean JSON instead of raw stack traces
-# ---------------------------------------------------------------------------
+# Error handlers - return clean JSON
+
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(request: Request, exc: RequestValidationError):
     logger.warning(f"Validation error on {request.url.path}: {exc.errors()}")
@@ -239,7 +193,7 @@ def predict_risk(record: PersonnelRecord) -> PredictionResponse:
 
     prediction = model.predict(input_data)[0]
     probabilities = model.predict_proba(input_data)[0]
-    confidence = round(float(max(probabilities)), 2)
+    confidence = round(float(max(probabilities))*100, 2)
     risk = str(prediction).lower()
 
     _append_row(PREDICTIONS_LOG_FILE, {
